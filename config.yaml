@@ -1,0 +1,16 @@
+credentials:
+  usernames:
+    john_doe:
+      name: John Doe
+      password: $2b$12$pbdiYYM3o8yNDS1.RMYymO4NiUtQ.fZehyll0WFhtaMkVr4RJVygu  # Paste hashed password here
+    jane_smith:
+      name: Jane Smith
+      password: $2b$12$dUuMcCuJduB0Cry7ADFKmesQ2DSzJqROf8vWxP2omT7tTt2AbpCvW  # Paste hashed password here
+cookie:
+  name: streamlit_auth_cookie
+  key: laksdjowdcjn93jhd09823n  # Replace with a strong, random key
+  expiry_days: 30
+preauthorized:
+  emails:
+    - john.doe@example.com  # Replace with actual preauthorized email addresses
+    - jane.smith@example.com
