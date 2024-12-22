@@ -105,7 +105,7 @@ streamlit run app.py
 5. Create a pull request
 
 ## License
-[Specify your license here, e.g., MIT License]
+MIT License
 
 ## Contact
-[Your contact information or support email]
+Email here : jk422331@gmail.com
