@@ -4,7 +4,7 @@ from docx.shared import Pt
 import os
 import google.generativeai as genai
 import io
-from pypdf import PdfReader
+# from pypdf2 import PdfReader
 import re
 import yaml
 from yaml.loader import SafeLoader
