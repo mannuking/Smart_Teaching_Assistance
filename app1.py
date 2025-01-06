@@ -2,9 +2,8 @@ import streamlit as st
 from docx import Document
 from docx.shared import Pt
 import os
-import google.generativeai as genai
 import io
-from pypdf import PdfReader
+# from pypdf2 import PdfReader
 import re
 import yaml
 from yaml.loader import SafeLoader
@@ -13,18 +12,21 @@ from dotenv import load_dotenv
 import json
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT, WD_TAB_ALIGNMENT, WD_TAB_LEADER
 from docx.shared import Inches
+import openai
 
 # --- Load Environment Variables ---
 load_dotenv()
 
 # --- Setup ---
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-if not GOOGLE_API_KEY:
-    st.error("Please set your Google API key in the .env file.")
+# Replace 'YOUR_OPENAI_API_KEY' with your actual OpenAI API key in the .env file
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+if not OPENAI_API_KEY:
+    st.error("Please set your OpenAI API key in the .env file.")
     st.stop()
 
-genai.configure(api_key=GOOGLE_API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
+openai.api_key = OPENAI_API_KEY
+# Specify the desired OpenAI model
+MODEL_NAME = "gpt-3.5-turbo"  # Replace with your preferred model
 
 # --- Caching ---
 generation_cache = {}  # Simple dictionary for caching
@@ -62,15 +64,17 @@ Your task is to generate a comprehensive roadmap that outlines the entire syllab
             st.success("Roadmap found in cache!")
             return generation_cache[prompt]
         with st.spinner("Generating roadmap..."):
-            response = model.generate_content(
-                prompt,
-                generation_config=genai.types.GenerationConfig(
-                    temperature=temperature,
-                )
+            response = openai.chat.completions.create(
+                model=MODEL_NAME,
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=temperature
             )
         st.success("Roadmap generated successfully!")
-        generation_cache[prompt] = response.text.strip()
-        return response.text.strip()
+        generation_cache[prompt] = response.choices[0].message.content.strip()
+        return response.choices[0].message.content.strip()
     except Exception as e:
         st.error(f"Error generating roadmap: {e}")
         print(f"Error generating roadmap: {e}")  # Debugging: Print error to console
@@ -234,15 +238,17 @@ def generate_lesson_plan_chunk(subject, difficulty_level, topic_data, parent_top
             st.success(f"Content for {topic_data['id']} found in cache!")
             return generation_cache[prompt]
         with st.spinner(f"Generating content for {topic_data['id']} (Depth: {depth})..."):
-            response = model.generate_content(
-                prompt,
-                generation_config=genai.types.GenerationConfig(
-                    temperature=temperature,
-                    max_output_tokens=500,
-                )
+            response = openai.chat.completions.create(
+                model=MODEL_NAME,
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=temperature,
+                max_tokens=500
             )
         # Convert to Markdown-like format
-        markdown_content = response.text.strip()
+        markdown_content = response.choices[0].message.content.strip()
         markdown_content = markdown_content.replace("*   ", "- ")  # Basic list conversion
 
         generation_cache[prompt] = markdown_content
@@ -675,16 +681,17 @@ def generate_text_from_prompt(prompt, temperature=0.8):
             st.success("Text found in cache!")
             return generation_cache[prompt]
         with st.spinner("Generating text..."):
-            response = model.generate_content(
-                prompt,
-                generation_config=genai.types.GenerationConfig(
-                    temperature=temperature,
-
-                )
+            response = openai.chat.completions.create(
+                model=MODEL_NAME,
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=temperature
             )
         st.success("Text generated!")
-        generation_cache[prompt] = response.text.strip()
-        return response.text.strip()
+        generation_cache[prompt] = response.choices[0].message.content.strip()
+        return response.choices[0].message.content.strip()
     except Exception as e:
         st.error(f"Error generating text: {e}")
         print(f"Error generating text: {e}")
