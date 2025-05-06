@@ -262,9 +262,6 @@ def display_app_header():
     }
 
     /* Sidebar styling */
-    .css-1d391kg {
-        background-color: #F1F5F9;
-    }
 
     /* Add modern font */
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Mono&display=swap');
