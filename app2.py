@@ -1376,6 +1376,14 @@ def format_lecture_notes_content(content, current_id):
     # Enhance emphasis
     formatted_content = re.sub(r'\*\*(.*?)\*\*', r'<strong class="content-emphasis">\1</strong>', formatted_content)
     formatted_content = re.sub(r'\*(.*?)\*', r'<em class="content-italic">\1</em>', formatted_content)
+
+    # Enhance code blocks and inline code
+    # This regex is a simplified approach; a full markdown parser would be more robust
+    formatted_content = re.sub(r'```(.*?)```', r'<pre><code>\1</code></pre>', formatted_content, flags=re.DOTALL)
+    formatted_content = re.sub(r'`(.*?)`', r'<code>\1</code>', formatted_content)
+
+    # Enhance blockquotes
+    formatted_content = re.sub(r'(?m)^> (.*?)$', r'<blockquote>\1</blockquote>', formatted_content)
     
     # Add section for the topic ID
     header = f'<div class="content-topic-header"><span class="content-topic-id">{current_id}</span></div>'
