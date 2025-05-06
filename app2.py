@@ -1133,22 +1133,69 @@ def create_docx_from_lesson_plan(lesson_plan_json, filename):
                 if "id" in data and "title" in data:
                     document.add_heading(f"{data['id']}: {data['title']}", level=level)
                 if "content" in data:
-                    #document.add_paragraph(data["content"])
-                    paragraphs = data["content"].split('\n')
-                    for para in paragraphs:
-                        para = para.strip()
-                        if para.startswith('# '):
-                            document.add_heading(para[2:], level=1)
-                        elif para.startswith('## '):
-                            document.add_heading(para[3:], level=2)
-                        elif para.startswith('### '):
-                            document.add_heading(para[4:], level=3)
-                        elif para.startswith('#### '):
-                            document.add_heading(para[5:], level=4)
-                        elif para.startswith('- '):
-                            document.add_paragraph(para[2:], style='List Bullet')
-                        elif para:
-                            document.add_paragraph(para)
+                    content_text = data["content"]
+                    # Split content into blocks based on two or more newlines
+                    blocks = re.split(r'\n{2,}', content_text)
+
+                    for block in blocks:
+                        block = block.strip()
+                        if not block:
+                            continue
+
+                        # Handle headings
+                        if block.startswith('#### '):
+                             document.add_heading(block[5:], level=4)
+                        elif block.startswith('### '):
+                             document.add_heading(block[4:], level=3)
+                        elif block.startswith('## '):
+                             document.add_heading(block[3:], level=2)
+                        elif block.startswith('# '):
+                             document.add_heading(block[2:], level=1)
+
+                        # Handle code blocks
+                        elif block.startswith('```'):
+                            code_content = block[3:]
+                            if code_content.endswith('```'):
+                                code_content = code_content[:-3]
+                            p = document.add_paragraph()
+                            run = p.add_run(code_content.strip())
+                            run.font.name = 'Courier New' # Use a monospaced font for code
+
+                        # Handle blockquotes
+                        elif block.startswith('> '):
+                            quote_text = block[2:].strip()
+                            document.add_paragraph(quote_text, style='Intense Quote')
+
+                        # Handle lists (bullet and numbered)
+                        elif block.startswith('- ') or re.match(r'^\d+\. ', block):
+                            list_items = block.split('\n')
+                            for item in list_items:
+                                item = item.strip()
+                                if item.startswith('- '):
+                                    document.add_paragraph(item[2:], style='List Bullet')
+                                elif re.match(r'^\d+\. ', item):
+                                    document.add_paragraph(re.sub(r'^\d+\. ', '', item), style='List Number')
+                                else:
+                                    # If a line in a list block doesn't match list format, add as a regular paragraph
+                                    document.add_paragraph(item)
+
+                        else:
+                            # Handle regular paragraphs and inline formatting (bold/italic/inline code)
+                            p = document.add_paragraph()
+                            # Simple regex for inline elements
+                            parts = re.split(r'(\*\*.*?\*\*|\*.*?\*|`.*?`)', block)
+                            for part in parts:
+                                if part.startswith('**') and part.endswith('**'):
+                                    run = p.add_run(part[2:-2])
+                                    run.bold = True
+                                elif part.startswith('*') and part.endswith('*'):
+                                    run = p.add_run(part[1:-1])
+                                    run.italic = True
+                                elif part.startswith('`') and part.endswith('`'):
+                                    run = p.add_run(part[1:-1])
+                                    run.font.name = 'Courier New' # Inline code font
+                                else:
+                                    p.add_run(part)
                 add_content(data.get("subtopics", []), level + 1)
                 add_content(data.get("subsubtopics", []), level + 2)
                 add_content(data.get("subsubsubtopics", []), level + 3)
