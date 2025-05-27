@@ -9,12 +9,12 @@ import google.generativeai as genai
 # import io # Not directly used anymore
 from pypdf import PdfReader
 import re
-# import yaml # Not used
-# from yaml.loader import SafeLoader # Not used
+# import yaml # Not Used
+# from yaml.loader import SafeLoader # Not Used
 import time
 from dotenv import load_dotenv
 import json
-# import base64 # Not used
+# import base64 # Not Used
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -623,10 +623,66 @@ if not GOOGLE_API_KEY:
     st.error("🚨 Please set your Google API key in the .env file.")
     st.stop()
 
+# Function to verify API key works with Gemini Pro model
+def verify_gemini_pro_api_access():
+    """Test if the API key has access to the Gemini 2.5 Pro Preview model"""
+    try:
+        # Configure the Google Generative AI library with the API key
+        genai.configure(api_key=GOOGLE_API_KEY)
+        # Create a test model instance
+        test_model = genai.GenerativeModel('gemini-2.5-pro-preview-05-06')
+        # Test with minimal content to check access (not actually generating content)
+        response = test_model.generate_content(
+            "Test access. Respond with one word: OK",
+            generation_config=genai.types.GenerationConfig(
+                temperature=0.1,
+                max_output_tokens=5
+            )
+        )
+        return True, "API key has access to Gemini 2.5 Pro Preview model"
+    except Exception as e:
+        error_msg = str(e)
+        if "429" in error_msg or "quota" in error_msg.lower() or "rate limit" in error_msg.lower():
+            return False, "⚠️ API quota exceeded or rate limits reached for Gemini 2.5 Pro Preview model. Some advanced features like evaluation may be limited."
+        elif "403" in error_msg or "permission" in error_msg.lower() or "access" in error_msg.lower():
+            return False, "⚠️ Your API key doesn't have permission to use the Gemini 2.5 Pro Preview model. Evaluation feature may not work."
+        else:
+            return False, f"⚠️ Error testing Gemini 2.5 Pro Preview model access: {error_msg}"
+
+def test_gemini_pro_api_key():
+    """
+    Tests if the Gemini 2.5 Pro Preview model is accessible with the current API key
+    Returns a tuple of (success, message)
+    """
+    try:
+        # Use a minimal prompt to test API access
+        test_model = genai.GenerativeModel('gemini-2.5-pro-preview-05-06')
+        response = test_model.generate_content(
+            "Test API access. Respond with OK.",
+            generation_config=genai.types.GenerationConfig(
+                temperature=0.1,
+                max_output_tokens=5
+            )
+        )
+        return True, None
+    except Exception as e:
+        error_msg = str(e)
+        if "429" in error_msg or "quota" in error_msg.lower() or "rate limit" in error_msg.lower():
+            return False, "API quota exceeded or rate limits reached. Please try again later."
+        elif "403" in error_msg or "permission" in error_msg.lower() or "access" in error_msg.lower():
+            return False, "Your API key doesn't have permission to use the Gemini 2.5 Pro Preview model."
+        else:
+            return False, f"Error accessing Gemini 2.5 Pro Preview model: {error_msg}"
+# Configure the Google Generative AI library with the API key
 genai.configure(api_key=GOOGLE_API_KEY)
 
+# Initialize the Flash Preview model for standard operations
 model = genai.GenerativeModel('gemini-2.5-flash-preview-04-17')
 
+# Verify access to Gemini Pro model (used for evaluation) and show warning if needed
+has_pro_access, pro_access_message = verify_gemini_pro_api_access()
+if not has_pro_access:
+    st.warning(pro_access_message)
 
 # --- Caching ---
 generation_cache = {} # Simple dictionary for caching
@@ -1130,7 +1186,7 @@ Begin generating the tagged sequence for "{current_id}":
 """
     return prompt
 
-def generate_text_from_prompt(prompt, temperature=0.7, purpose="content"): # Added purpose for cache key
+def generate_text_from_prompt(prompt, temperature=0.7, purpose="content"):
     cache_key = f"{purpose}_{prompt[:200]}_{temperature}" # Basic cache key
     if cache_key in generation_cache:
         # st.info(f"ℹ️ Raw text for {purpose} found in cache.")
@@ -1141,8 +1197,7 @@ def generate_text_from_prompt(prompt, temperature=0.7, purpose="content"): # Add
                 prompt,
                 generation_config=genai.types.GenerationConfig(
                     temperature=temperature,
-                    max_output_tokens=4090 # Max for flash
-                )
+                    max_output_tokens=4090                )
             )
         raw_text = response.text.strip()
         if not raw_text:
@@ -1153,6 +1208,47 @@ def generate_text_from_prompt(prompt, temperature=0.7, purpose="content"): # Add
     except Exception as e:
         st.error(f"⚠️ Error during AI generation for {purpose}: {e}")
         return f"Error generating {purpose}. Details: {e}"
+
+def format_lecture_notes_content(content, current_id):
+    """Formats the generated lecture notes content with enhanced HTML styling."""
+    # Process the content to ensure proper HTML formatting
+    if not content:
+        return ""
+    
+    # Convert markdown to enhanced HTML with better styling
+    formatted_content = content
+    
+    # Enhance headings
+    formatted_content = re.sub(r'# (.*?)$', r'<h1 class="content-heading">\1</h1>', formatted_content, flags=re.MULTILINE)
+    formatted_content = re.sub(r'## (.*?)$', r'<h2 class="content-subheading">\1</h2>', formatted_content, flags=re.MULTILINE)
+    formatted_content = re.sub(r'### (.*?)$', r'<h3 class="content-subheading-2">\1</h3>', formatted_content, flags=re.MULTILINE)
+    
+    # Enhance lists
+    formatted_content = re.sub(r'(?m)^- (.*?)$', r'<li class="content-list-item">\1</li>', formatted_content)
+    formatted_content = re.sub(r'(?m)^(\d+)\. (.*?)$', r'<li class="content-list-numbered">\1. \2</li>', formatted_content)
+    
+    # Wrap lists in proper HTML
+    formatted_content = re.sub(r'(<li class="content-list-item">.*?</li>\n)+', r'<ul class="content-list">\n\g<0></ul>', formatted_content, flags=re.DOTALL)
+    formatted_content = re.sub(r'(<li class="content-list-numbered">.*?</li>\n)+', r'<ol class="content-list-numbered">\n\g<0></ol>', formatted_content, flags=re.DOTALL)
+    
+    # Enhance emphasis
+    formatted_content = re.sub(r'\*\*(.*?)\*\*', r'<strong class="content-emphasis">\1</strong>', formatted_content)
+    formatted_content = re.sub(r'\*(.*?)\*', r'<em class="content-italic">\1</em>', formatted_content)
+
+    # Enhance code blocks and inline code
+    formatted_content = re.sub(r'```(.*?)```', r'<pre><code>\1</code></pre>', formatted_content, flags=re.DOTALL)
+    formatted_content = re.sub(r'`(.*?)`', r'<code>\1</code>', formatted_content)
+
+    # Enhance blockquotes
+    formatted_content = re.sub(r'(?m)^> (.*?)$', r'<blockquote>\1</blockquote>', formatted_content)
+    
+    # Add section for the topic ID
+    header = f'<div class="content-topic-header"><span class="content-topic-id">{current_id}</span></div>'
+    
+    # Wrap everything in a div with proper styling
+    formatted_content = f'{header}<div class="content-container">{formatted_content}</div>'
+    
+    return formatted_content
 
 def parse_linear_structured_notes(raw_text, tags_config):
     elements = []
@@ -1321,29 +1417,261 @@ def create_docx_from_parsed_elements(all_topics_data, filename, subject_name, di
         st.error(f"Error creating detailed notes DOCX: {e}")
         import traceback; traceback.print_exc(); return None
 
-def format_lecture_notes_content(content, current_id_for_header=""): # Kept for lesson plan preview
-    """Formats Markdown content with enhanced HTML styling."""
-    if not content: return ""
-    formatted_content = content
-    formatted_content = re.sub(r'# (.*?)$', r'<h1 class="content-heading">\1</h1>', formatted_content, flags=re.MULTILINE)
-    formatted_content = re.sub(r'## (.*?)$', r'<h2 class="content-subheading">\1</h2>', formatted_content, flags=re.MULTILINE)
-    formatted_content = re.sub(r'### (.*?)$', r'<h3 class="content-subheading-2">\1</h3>', formatted_content, flags=re.MULTILINE)
-    formatted_content = re.sub(r'(?m)^- (.*?)$', r'<li class="content-list-item">\1</li>', formatted_content)
-    formatted_content = re.sub(r'(?m)^(\d+)\. (.*?)$', r'<li class="content-list-item">\1. \2</li>', formatted_content) # Use same class for now
-    formatted_content = re.sub(r'(<li class="content-list-item">.*?</li>\n*)+', r'<ul class="content-list">\g<0></ul>', formatted_content, flags=re.DOTALL) # Basic wrapping
-    formatted_content = formatted_content.replace("</ul>\n<ul", "</ul><ul") # Fix multiple lists
-    formatted_content = re.sub(r'\*\*(.*?)\*\*', r'<strong class="content-emphasis">\1</strong>', formatted_content)
-    formatted_content = re.sub(r'\*(.*?)\*', r'<em class="content-italic">\1</em>', formatted_content)
-    formatted_content = re.sub(r'```(.*?)```', r'<pre><code>\1</code></pre>', formatted_content, flags=re.DOTALL)
-    formatted_content = re.sub(r'`(.*?)`', r'<code>\1</code>', formatted_content)
-    formatted_content = re.sub(r'(?m)^> (.*?)$', r'<blockquote>\1</blockquote>', formatted_content)
+def evaluate_notes_with_advanced_ai(notes_content, subject, difficulty_level, evaluation_aspects, evaluation_depth):
+    """
+    Evaluates the generated notes using the advanced Gemini 2.5 Pro model
+    """
+    try:
+        # Make sure we're using the latest API key configuration
+        api_key = os.getenv("GOOGLE_API_KEY")
+        if not api_key:
+            st.error("🚨 Google API key not found. Please check your .env file.")
+            return None
+        
+        # Initialize the advanced model for evaluation with explicit API key
+        genai.configure(api_key=api_key)
+        evaluation_model = genai.GenerativeModel('gemini-2.5-pro-preview-05-06')
+        
+        # Build comprehensive evaluation prompt
+        evaluation_prompt = build_evaluation_prompt(
+            notes_content, subject, difficulty_level, evaluation_aspects, evaluation_depth
+        )
+        
+        # Generate evaluation using the advanced model
+        response = evaluation_model.generate_content(
+            evaluation_prompt,
+            generation_config=genai.types.GenerationConfig(
+                temperature=0.3,  # Lower temperature for more analytical, consistent evaluation
+                max_output_tokens=4096
+            )
+        )
+        
+        return response.text.strip()
+        
+    except Exception as e:
+        error_msg = str(e)
+        if "429" in error_msg or "quota" in error_msg.lower() or "rate limit" in error_msg.lower() or "resource exhausted" in error_msg.lower():
+            st.error(f"""🚨 API quota exceeded or rate limit reached.
+
+This is likely because the Gemini 2.5 Pro Preview model has usage limitations.
+
+**Troubleshooting steps:**
+1. Confirm your API key is correctly set in the .env file
+2. Verify that your API key has access to the Gemini 2.5 Pro Preview model
+3. Try again later as API quotas are often reset daily
+
+Current API key: {api_key[:5]}...{api_key[-4:]}""")
+        else:
+            st.error(f"Error during evaluation: {error_msg}")
+        return None
+
+def build_evaluation_prompt(notes_content, subject, difficulty_level, evaluation_aspects, evaluation_depth):
+    """
+    Builds a comprehensive evaluation prompt for the advanced AI model
+    """
+    aspects_description = {
+        "Content Accuracy": "factual correctness, up-to-date information, and absence of misconceptions",
+        "Educational Value": "learning effectiveness, pedagogical soundness, and achievement of learning objectives",
+        "Clarity & Structure": "logical organization, clear explanations, and readability",
+        "Depth of Coverage": "comprehensiveness, adequate detail level, and topic coverage",
+        "Practical Examples": "relevance and quality of examples, case studies, and applications",
+        "Assessment Quality": "quality of questions, exercises, and evaluation methods"
+    }
     
-    header_html = f'<div class="content-topic-header"><span class="content-topic-id">{current_id_for_header}</span></div>' if current_id_for_header else ""
-    return f'{header_html}<div class="content-container">{formatted_content}</div>'
+    selected_aspects_text = ", ".join([f"{aspect} ({aspects_description[aspect]})" for aspect in evaluation_aspects])
+    
+    depth_instructions = {
+        "Quick": "Provide a concise evaluation with key strengths and areas for improvement.",
+        "Standard": "Provide a detailed evaluation with specific examples and actionable recommendations.",
+        "Comprehensive": "Provide an in-depth analysis with detailed reasoning, multiple examples, and comprehensive improvement strategies."
+    }
+    
+    prompt = f"""
+    You are an expert educational content evaluator and pedagogical analyst with extensive experience in curriculum design and educational materials assessment. Your task is to conduct a thorough evaluation of the following educational notes.
+
+    **EVALUATION CONTEXT:**
+    - Subject: {subject}
+    - Target Audience: {difficulty_level} level students
+    - Evaluation Depth: {evaluation_depth}
+    - Focus Areas: {selected_aspects_text}
+
+    **NOTES TO EVALUATE:**
+    {notes_content}
+
+    **EVALUATION INSTRUCTIONS:**
+    {depth_instructions[evaluation_depth]}
+
+    **EVALUATION FRAMEWORK:**
+    Please structure your evaluation using the following format and evaluate ONLY the selected aspects:
+
+    ## EVALUATION SUMMARY
+    [Provide an overall assessment score from 1-10 and a brief summary]
+
+    ## DETAILED ANALYSIS
+    
+    {chr(10).join([f"### {aspect.upper().replace(' ', '_')}_EVALUATION" + chr(10) + f"[Analyze the {aspect.lower()} aspect in detail]" + chr(10) for aspect in evaluation_aspects])}
+
+    ## STRENGTHS
+    [List 3-5 key strengths of the educational material]
+
+    ## AREAS_FOR_IMPROVEMENT
+    [List 3-5 specific areas that need improvement with actionable suggestions]
+
+    ## RECOMMENDATIONS
+    [Provide specific, actionable recommendations for enhancing the educational effectiveness]
+
+    ## EDUCATIONAL_IMPACT_ASSESSMENT
+    [Assess how well these notes would help students achieve learning objectives]
+
+    **EVALUATION CRITERIA:**
+    - Be objective and constructive in your analysis
+    - Provide specific examples from the content when highlighting issues or strengths
+    - Consider the target audience level in your assessment
+    - Focus on educational effectiveness and student learning outcomes
+    - Provide actionable recommendations for improvement
+    - Rate each aspect quantitatively where appropriate (1-10 scale)
+
+    Ensure your evaluation is thorough, professional, and aimed at improving educational outcomes.
+    """
+    
+    return prompt
+
+def display_evaluation_results(evaluation_text):
+    """
+    Displays the evaluation results in a structured, user-friendly format
+    """
+    # Parse the evaluation sections
+    sections = parse_evaluation_sections(evaluation_text)
+    
+    # Display overall summary with styling
+    if "EVALUATION_SUMMARY" in sections:
+        st.markdown("#### 🎯 Overall Assessment")
+        st.info(sections["EVALUATION_SUMMARY"])
+    
+    # Display detailed analysis sections
+    if "DETAILED_ANALYSIS" in sections:
+        st.markdown("#### 📋 Detailed Analysis")
+        with st.expander("View Detailed Analysis", expanded=True):
+            st.markdown(sections["DETAILED_ANALYSIS"])
+    
+    # Display strengths and improvements in columns
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if "STRENGTHS" in sections:
+            st.markdown("#### ✅ Key Strengths")
+            st.success(sections["STRENGTHS"])
+    
+    with col2:
+        if "AREAS_FOR_IMPROVEMENT" in sections:
+            st.markdown("#### 🔧 Areas for Improvement")
+            st.warning(sections["AREAS_FOR_IMPROVEMENT"])
+    
+    # Display recommendations
+    if "RECOMMENDATIONS" in sections:
+        st.markdown("#### 💡 Recommendations")
+        st.markdown(sections["RECOMMENDATIONS"])
+    
+    # Display educational impact
+    if "EDUCATIONAL_IMPACT_ASSESSMENT" in sections:
+        st.markdown("#### 🎓 Educational Impact Assessment")
+        with st.expander("View Impact Assessment"):
+            st.markdown(sections["EDUCATIONAL_IMPACT_ASSESSMENT"])
+
+def parse_evaluation_sections(evaluation_text):
+    """
+    Parses the evaluation text into structured sections
+    """
+    sections = {}
+    
+    # Define section markers
+    section_markers = [
+        "EVALUATION_SUMMARY", "EVALUATION SUMMARY",
+        "DETAILED_ANALYSIS", "DETAILED ANALYSIS",
+        "STRENGTHS", "AREAS_FOR_IMPROVEMENT", "AREAS FOR IMPROVEMENT",
+        "RECOMMENDATIONS", "EDUCATIONAL_IMPACT_ASSESSMENT", "EDUCATIONAL IMPACT ASSESSMENT"
+    ]
+    
+    current_section = None
+    current_content = []
+    
+    lines = evaluation_text.split('\n')
+    
+    for line in lines:
+        # Check if line starts a new section
+        is_section_header = False
+        for marker in section_markers:
+            if f"## {marker}" in line.upper() or f"## {marker.replace('_', ' ')}" in line.upper():
+                # Save previous section if it exists
+                if current_section and current_content:
+                    sections[current_section] = '\n'.join(current_content)
+                
+                # Start new section
+                current_section = marker.replace(' ', '_')
+                current_content = []
+                is_section_header = True
+                break
+        
+        # If not a section header, add to current content
+        if not is_section_header and current_section:
+            current_content.append(line)
+    
+    # Add the last section
+    if current_section and current_content:
+        sections[current_section] = '\n'.join(current_content)
+    
+    # If no sections were found, use the entire text as the summary
+    if not sections:
+        sections["EVALUATION_SUMMARY"] = evaluation_text
+    
+    return sections
+
+def create_evaluation_report(evaluation_text, subject, difficulty_level):
+    """
+    Creates a DOCX evaluation report
+    """
+    try:
+        doc = Document()
+        
+        # Add title and metadata
+        title = doc.add_heading(f"Educational Notes Evaluation Report", level=1)
+        title.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+        
+        # Add metadata
+        doc.add_paragraph(f"Subject: {subject}")
+        doc.add_paragraph(f"Difficulty Level: {difficulty_level}")
+        doc.add_paragraph(f"Evaluation Date: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+        doc.add_paragraph(f"Evaluation Model: Gemini 2.5 Pro")
+        doc.add_paragraph()
+        
+        # Parse and add evaluation content
+        sections = parse_evaluation_sections(evaluation_text)
+        
+        for section_name, content in sections.items():
+            if content.strip():
+                # Add section heading
+                heading_text = section_name.replace('_', ' ').title()
+                doc.add_heading(heading_text, level=2)
+                
+                # Add section content
+                for paragraph in content.split('\n'):
+                    if paragraph.strip():
+                        p = doc.add_paragraph(paragraph.strip())
+                        p.style.font.size = Pt(11)
+        
+        # Save the document
+        filename = f"evaluation_report_{int(time.time())}.docx"
+        doc.save(filename)
+        return filename
+        
+    except Exception as e:
+        st.error(f"Error creating evaluation report: {str(e)}")
+        return None
 
 # --- Streamlit App UI ---
 display_app_header()
 
+# Show API information in the sidebar
 st.sidebar.markdown(f"""# 📚 Smart Teaching Assistant
 **Welcome!** This app transforms syllabi into detailed teaching materials using AI.
 ### How it works:
@@ -1351,6 +1679,7 @@ st.sidebar.markdown(f"""# 📚 Smart Teaching Assistant
 2. 🗺️ Generate a structured roadmap.
 3. 📝 Create a detailed lesson plan (editable).
 4. 📖 Generate comprehensive lecture notes.
+5. 🔍 Evaluate notes with advanced AI (uses Gemini 2.5 Pro).
 ---
 🧠 Powered by Gemini
 """)
@@ -1496,6 +1825,92 @@ if "lesson_plan" in st.session_state and subject:
          st.info("ℹ️ Click 'Generate Detailed Notes' to create the DOCX.")
 else:
     st.info("⚠️ Please generate and save a lesson plan first to enable detailed notes generation.")
+
+# Step 5: Evaluation Section
+st.markdown("## 🔍 Step 5: Evaluate Generated Notes")
+st.markdown("""
+**Analyze the quality, accuracy, and educational value of your generated detailed notes using advanced AI evaluation.**
+""")
+
+if "notes_filename" in st.session_state and os.path.exists(st.session_state.notes_filename):
+    # Add evaluation button and controls
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        evaluation_aspects = st.multiselect(
+            "🎯 Select evaluation criteria:",
+            ["Content Accuracy", "Educational Value", "Clarity & Structure", "Depth of Coverage", "Practical Examples", "Assessment Quality"],
+            default=["Content Accuracy", "Educational Value", "Clarity & Structure"],
+            help="Choose which aspects of the notes you want to evaluate"
+        )
+    
+    with col2:
+        evaluation_depth = st.select_slider(
+            "📊 Evaluation Depth:",
+            options=["Quick", "Standard", "Comprehensive"],
+            value="Standard",
+            help="Choose how detailed the evaluation should be"
+        )
+    
+    if st.button("🧠 Evaluate Notes with Advanced AI", key="evaluate_notes_btn"):
+        if not evaluation_aspects:
+            st.warning("⚠️ Please select at least one evaluation criteria.")
+        else:            # Read the generated notes content
+            try:
+                from docx import Document as DocxDocument
+                doc = DocxDocument(st.session_state.notes_filename)
+                notes_content = "\n".join([paragraph.text for paragraph in doc.paragraphs if paragraph.text.strip()])
+                
+                if len(notes_content) > 50000:  # Limit content size for API
+                    notes_content = notes_content[:50000] + "\n\n[Content truncated for evaluation...]"
+                
+                with st.spinner("🔄 Advanced AI is evaluating your notes... This may take a few moments."):
+                    # Display info about using Gemini Pro model
+                    st.info("📢 Using Gemini 2.5 Pro Preview model for detailed evaluation. This advanced model may have usage limitations.")
+                    
+                    evaluation_result = evaluate_notes_with_advanced_ai(
+                        notes_content, subject, difficulty_level, evaluation_aspects, evaluation_depth
+                    )
+                
+                if evaluation_result:
+                    st.session_state.evaluation_result = evaluation_result
+                    st.success("✅ Evaluation completed!")
+                    st.rerun()
+                else:
+                    # If evaluation_result is None, it means there was an error (already shown by the function)
+                    # Provide additional guidance to the user
+                    st.warning("💡 If you're experiencing API quota issues, make sure your Google API key has access to the Gemini 2.5 Pro model.")
+                    
+            except Exception as e:
+                st.error(f"❌ Error reading notes file: {str(e)}")
+
+    # Display evaluation results if available
+    if "evaluation_result" in st.session_state:
+        st.markdown("### 📊 Evaluation Results")
+        
+        # Parse and display the evaluation results
+        display_evaluation_results(st.session_state.evaluation_result)
+        
+        # Option to download evaluation report
+        if st.button("📥 Download Evaluation Report", key="download_eval_btn"):
+            evaluation_filename = create_evaluation_report(
+                st.session_state.evaluation_result, 
+                subject, 
+                difficulty_level
+            )
+            if evaluation_filename:
+                with open(evaluation_filename, "rb") as eval_file:
+                    st.download_button(
+                        label="📄 Download Evaluation Report (DOCX)",
+                        data=eval_file,
+                        file_name=f"{subject.replace(' ','_')}_EvaluationReport.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    )
+                os.remove(evaluation_filename)  # Clean up temp file
+                st.success("📋 Evaluation report ready for download!")
+
+else:
+    st.info("⚠️ Please generate detailed notes first to enable evaluation.")
 
 # Footer
 st.markdown("---")
